@@ -162,24 +162,18 @@ namespace Runtime {
 
     struct TupleRef {
         uint8_t* data;
-        SchemaPtr schema;
+        const std::vector<size_t>& offsets;
 
         TupleValueRef operator[](size_t index);
 
-        TupleValueRef operator[](const std::string& field_name);
-
         ConstTupleValueRef operator[](size_t index) const;
-
-        ConstTupleValueRef operator[](const std::string& field_name) const;
     };
 
     struct ConstTupleRef {
         uint8_t const* data;
-        SchemaPtr schema;
+        const std::vector<size_t>& offsets;
 
         ConstTupleValueRef operator[](size_t index) const;
-
-        ConstTupleValueRef operator[](const std::string& field_name) const;
     };
 
     class TupleBuffer {
@@ -250,6 +244,8 @@ namespace Runtime {
     private:
         std::vector<uint8_t> data;
         size_t number_of_tuples = 0;
+        std::vector<size_t> field_offsets;
+        size_t tuple_size;
         size_t capacity;
         SchemaPtr schema;
     };
@@ -281,14 +277,15 @@ public:
     std::shared_ptr<arrow::Schema> getArrowSchema();
 
     void writeArrowArrayToTupleBuffer(uint64_t tupleCountInBuffer, uint64_t schemaFieldIndex,
-                                      Runtime::TupleBuffer& tupleBuffer, std::shared_ptr<arrow::Array> arrowArray);
+                                      Runtime::TupleBuffer& tupleBuffer,
+                                      std::shared_ptr<arrow::Array> arrowArray) const;
 
     /**
     * @brief method to get the arrow arrays from tuple buffer
     * @param a reference to input TupleBuffer
     * @return a vector of Arrow Arrays
     */
-    std::vector<std::shared_ptr<arrow::Array>> getArrowArrays(Runtime::TupleBuffer& inputBuffer);
+    std::vector<std::shared_ptr<arrow::Array>> getArrowArrays(Runtime::TupleBuffer& inputBuffer) const;
 
     /**
      * @brief method to return the format as a string

@@ -8,47 +8,29 @@ std::string ArrowFormat::getFormattedSchema() {
     NES_NOT_IMPLEMENTED();
 }
 
-Runtime::TupleValueRef Runtime::TupleRef::operator[](const std::string& field_name) {
-    size_t index = schema->name_to_index(field_name);
-    return TupleValueRef{
-        data + schema->get_field_offset(index), schema->fields[index]->getPhysicalType()->nativeType
-    };
-}
-
-Runtime::ConstTupleValueRef Runtime::TupleRef::operator[](const std::string& field_name) const {
-    size_t index = schema->name_to_index(field_name);
-    return ConstTupleValueRef{
-        data + schema->get_field_offset(index), schema->fields[index]->getPhysicalType()->nativeType
-    };
-}
-
-Runtime::ConstTupleValueRef Runtime::ConstTupleRef::operator[](const std::string& field_name) const {
-    size_t index = schema->name_to_index(field_name);
-    return ConstTupleValueRef{
-        data + schema->get_field_offset(index), schema->fields[index]->getPhysicalType()->nativeType
-    };
-}
-
 Runtime::TupleValueRef Runtime::TupleRef::operator[](size_t index) {
     return TupleValueRef{
-        data + schema->get_field_offset(index), schema->fields[index]->getPhysicalType()->nativeType
+        data + offsets[index], INT_64
     };
 }
 
 Runtime::ConstTupleValueRef Runtime::TupleRef::operator[](size_t index) const {
     return ConstTupleValueRef{
-        data + schema->get_field_offset(index), schema->fields[index]->getPhysicalType()->nativeType
+        data + offsets[index], INT_64
     };
 }
 
 Runtime::ConstTupleValueRef Runtime::ConstTupleRef::operator[](size_t index) const {
     return ConstTupleValueRef{
-        data + schema->get_field_offset(index), schema->fields[index]->getPhysicalType()->nativeType
+        data + offsets[index], INT_64
     };
 }
 
 Runtime::TupleBuffer::TupleBuffer(size_t capacity, SchemaPtr schema): capacity(capacity),
-                                                                      schema(std::move(schema)) {
+                                                                      tuple_size(schema->get_tuple_size()),
+                                                                      field_offsets(schema->field_offset),
+                                                                      schema(std::move(schema))
+{
     data.resize(this->schema->get_tuple_size() * capacity);
 }
 
@@ -57,12 +39,12 @@ size_t Runtime::TupleBuffer::getNumberOfTuples() {
 }
 
 Runtime::TupleRef Runtime::TupleBuffer::operator[](size_t index) {
-    return TupleRef{data.data() + index * schema->get_tuple_size(), schema};
+    return TupleRef{data.data() + index * tuple_size, field_offsets};
 }
 
 Runtime::ConstTupleRef Runtime::TupleBuffer::operator[](size_t index) const {
     assert(index < number_of_tuples);
-    return ConstTupleRef{data.data() + index * schema->get_tuple_size(), schema};
+    return ConstTupleRef{data.data() + index * tuple_size, field_offsets};
 }
 
 SchemaPtr Runtime::TupleBuffer::getSchema() {
@@ -146,7 +128,7 @@ std::string ArrowFormat::getFormattedBuffer(Runtime::TupleBuffer&) {
 std::string ArrowFormat::toString() { return "ARROW_IPC_FORMAT"; }
 
 
-std::vector<std::shared_ptr<arrow::Array>> ArrowFormat::getArrowArrays(Runtime::TupleBuffer& inputBuffer) {
+std::vector<std::shared_ptr<arrow::Array>> ArrowFormat::getArrowArrays(Runtime::TupleBuffer& inputBuffer) const {
     std::vector<std::shared_ptr<arrow::Array>> arrowArrays;
     uint64_t numberOfFields = schema->fields.size();
     auto numberOfTuples = inputBuffer.getNumberOfTuples();
@@ -498,12 +480,12 @@ std::shared_ptr<arrow::Schema> ArrowFormat::getArrowSchema() {
 void ArrowFormat::writeArrowArrayToTupleBuffer(uint64_t tupleCountInBuffer,
                                                uint64_t schemaFieldIndex,
                                                Runtime::TupleBuffer& tupleBuffer,
-                                               const std::shared_ptr<arrow::Array> arrowArray) {
+                                               const std::shared_ptr<arrow::Array> arrowArray) const {
     if (arrowArray == nullptr) {
         NES_THROW_RUNTIME_ERROR("ArrowSource::writeArrowArrayToTupleBuffer: arrowArray is null.");
     }
 
-    auto fields = schema->fields;
+    const auto& fields = schema->fields;
     auto dataType = fields[schemaFieldIndex];
     auto physicalType = dataType->getPhysicalType();
     uint64_t arrayLength = static_cast<uint64_t>(arrowArray->length());

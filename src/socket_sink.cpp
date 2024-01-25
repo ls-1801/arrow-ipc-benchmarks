@@ -20,10 +20,10 @@
 #include <arrow/ipc/api.h>
 #include <argparse/argparse.hpp>
 #include <folly/concurrency/DynamicBoundedQueue.h>
+#include <arrow/flight/server.h>
 
 struct FSSourceArgs : public argparse::Args {
-    std::string& file_name = arg("file path");
-    size_t& buffer_per_file = arg("number of buffer per file");
+    short& port = arg("Port number");
     size_t& tuples_per_buffer = arg("number of tuples per buffer");
 };
 
@@ -47,76 +47,68 @@ std::string create_file_name(const std::string& filename_template, size_t file_n
     return fmt::format("{}.{}.arrow", filename_template, file_number);
 }
 
-arrow::Status read_tuplebuffers_from_file(const std::string& filename_template,
-                                          const SchemaPtr& schema,
-                                          size_t tuples_per_file,
-                                          size_t tuple_buffer_size,
-                                          std::function<void(std::shared_ptr<arrow::RecordBatch>&&)> emitter
-) {
-    using namespace std::chrono_literals;
-    size_t file_number = 0;
-open_file:
-    std::shared_ptr<arrow::io::ReadableFile> inputFile;
-    std::shared_ptr<arrow::ipc::RecordBatchStreamReader> reader;
-    size_t index_within_file = 0;
-    auto retry_interval = 50ms;
-    do {
-        auto open_result = arrow::io::ReadableFile::Open(create_file_name(filename_template, file_number));
-        NES_WARNING("Opening file: {}\n", create_file_name(filename_template, file_number));
-        if (open_result.ok()) {
-            inputFile = open_result.ValueOrDie();
-            auto reader_result = arrow::ipc::RecordBatchStreamReader::Open(inputFile);
-            if (reader_result.ok()) {
-                reader = reader_result.ValueOrDie();
-                NES_TRACE("Successfully opened file\n");
-                break;
-            }
-        }
-        NES_WARNING("\tFile does not exist!\n");
-        std::this_thread::sleep_for(retry_interval);
-        retry_interval *= 2;
-    } while (true);
-
-new_batch:
-    std::shared_ptr<arrow::RecordBatch> batch;
-    auto batch_retry_interval = 50ms;
-    do {
-        NES_TRACE("Reading next batch\n");
-        reader->ReadNext(&batch);
-        if (batch) {
-            index_within_file += batch->num_rows();
-            NES_TRACE("Succesfully read next batch\n");
-            break;
-        }
-        NES_TRACE("\tReached EOF\n");
-        if (index_within_file < tuples_per_file) {
-            if (batch_retry_interval > 1s) {
-                NES_WARNING("Retry Intervall longer than 1s");
-                return arrow::Status::UnknownError("Retry intervall execeeds limit");
-            }
-
-            NES_WARNING("\tExpecting more tuples {}%\n",
-                        static_cast<double>(index_within_file) / static_cast<double>(tuples_per_file) * 100.00);
-            std::this_thread::sleep_for(batch_retry_interval);
-            batch_retry_interval *= 2;
-        } else {
-            std::filesystem::remove(create_file_name(filename_template, file_number));
-            file_number++;
-            goto open_file;
-        }
-    } while (true);
-    size_t index_within_current_batch = 0;
-new_buffer:
-    const size_t tuple_size = std::min(tuple_buffer_size, batch->num_rows() - index_within_current_batch);
-    emitter(batch->Slice(index_within_current_batch, tuple_size));
-    index_within_current_batch += tuple_size;
-    if (index_within_current_batch == batch->num_rows()) {
-        goto new_batch;
-    }
-    goto new_buffer;
-}
-
 using Queue = folly::DynamicBoundedQueue<std::shared_ptr<arrow::RecordBatch>, true, true, true>;
+
+class SinkService : public arrow::flight::FlightServerBase {
+    Queue& queue;
+
+public:
+    explicit SinkService(Queue& queue)
+        : queue(queue) {
+    }
+
+    arrow::Status DoPut(const arrow::flight::ServerCallContext& context,
+                        std::unique_ptr<arrow::flight::FlightMessageReader> reader,
+                        std::unique_ptr<arrow::flight::FlightMetadataWriter> writer) override {
+        std::shared_ptr<arrow::RecordBatch> batch;
+        ARROW_ASSIGN_OR_RAISE(auto batch_reader, arrow::flight::MakeRecordBatchReader(std::move(reader)));
+        ARROW_RETURN_NOT_OK(batch_reader->ReadNext(&batch));
+        while (batch) {
+            queue.enqueue(batch);
+            ARROW_RETURN_NOT_OK(batch_reader->ReadNext(&batch));
+        }
+        return arrow::Status::OK();
+    }
+
+    ~SinkService() override = default;
+
+    arrow::Status ListFlights(const arrow::flight::ServerCallContext& context, const arrow::flight::Criteria* criteria,
+                              std::unique_ptr<arrow::flight::FlightListing>* listings) override {
+        NES_NOT_IMPLEMENTED();
+    }
+
+    arrow::Status GetFlightInfo(const arrow::flight::ServerCallContext& context,
+                                const arrow::flight::FlightDescriptor& request,
+                                std::unique_ptr<arrow::flight::FlightInfo>* info) override {
+    }
+
+    arrow::Status GetSchema(const arrow::flight::ServerCallContext& context,
+                            const arrow::flight::FlightDescriptor& request,
+                            std::unique_ptr<arrow::flight::SchemaResult>* schema) override {
+        NES_NOT_IMPLEMENTED();
+    }
+
+    arrow::Status DoGet(const arrow::flight::ServerCallContext& context, const arrow::flight::Ticket& request,
+                        std::unique_ptr<arrow::flight::FlightDataStream>* stream) override {
+        NES_NOT_IMPLEMENTED();
+    }
+
+    arrow::Status DoExchange(const arrow::flight::ServerCallContext& context,
+                             std::unique_ptr<arrow::flight::FlightMessageReader> reader,
+                             std::unique_ptr<arrow::flight::FlightMessageWriter> writer) override {
+        NES_NOT_IMPLEMENTED();
+    }
+
+    arrow::Status DoAction(const arrow::flight::ServerCallContext& context, const arrow::flight::Action& action,
+                           std::unique_ptr<arrow::flight::ResultStream>* result) override {
+        NES_NOT_IMPLEMENTED();
+    }
+
+    arrow::Status ListActions(const arrow::flight::ServerCallContext& context,
+                              std::vector<arrow::flight::ActionType>* actions) override {
+        NES_NOT_IMPLEMENTED();
+    }
+};
 
 arrow::Status arrow_main(const FSSourceArgs& args) {
     auto sch = Schema::create();
@@ -154,11 +146,17 @@ arrow::Status arrow_main(const FSSourceArgs& args) {
         }
     });
 
-    read_tuplebuffers_from_file(args.file_name, schema, args.tuples_per_buffer * args.buffer_per_file,
-                                args.tuples_per_buffer,
-                                [&](std::shared_ptr<arrow::RecordBatch>&& record_batch) {
-                                    queue.enqueue(record_batch);
-                                });
+
+    arrow::flight::Location server_location;
+    ARROW_RETURN_NOT_OK(arrow::flight::Location::ForGrpcTcp("0.0.0.0", args.port, &server_location));
+
+    arrow::flight::FlightServerOptions options(server_location);
+    auto serivce = SinkService(queue);
+    ARROW_RETURN_NOT_OK(serivce.Init(options));
+    std::cout << "Listening on port " << serivce.port() << std::endl;
+
+    serivce.Wait();
+
     return arrow::Status::OK();
 }
 

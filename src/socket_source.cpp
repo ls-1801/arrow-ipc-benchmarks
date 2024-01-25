@@ -12,15 +12,15 @@
     limitations under the License.
  */
 
+#include <arrow/flight/api.h>
 #include <iostream>
 #include "common.hpp"
 #include <arrow/ipc/api.h>
 #include <argparse/argparse.hpp>
 #include <folly/concurrency/DynamicBoundedQueue.h>
 
-struct FSSourceArgs : public argparse::Args {
-    std::string& file_name = arg("file path");
-    size_t& buffer_per_file = arg("number of buffer per file");
+struct SocketSourceArgs : public argparse::Args {
+    short& port = arg("Port number");
     size_t& tuples_per_buffer = arg("number of tuples per buffer");
 };
 
@@ -71,7 +71,7 @@ new_buffer:
 
 using Queue = folly::DynamicBoundedQueue<Runtime::TupleBuffer, true, true, true>;
 
-arrow::Status arrow_main(const FSSourceArgs& args) {
+arrow::Status arrow_main(const SocketSourceArgs& args) {
     auto sch = Schema::create();
     auto schema = sch->append(SchemaField::create("id", INT_64));
 
@@ -95,20 +95,39 @@ arrow::Status arrow_main(const FSSourceArgs& args) {
         }
     });
 
-    write_tuples_to_file(args.file_name,
-                         [&queue, &schema]() -> std::optional<Runtime::TupleBuffer> {
-                             auto tb = Runtime::TupleBuffer(0, schema);
-                             queue.dequeue(tb);
-                             return tb;
-                         }, args.buffer_per_file * args.tuples_per_buffer, arrow_schema, *format);
+    arrow::flight::Location location;
+    ARROW_RETURN_NOT_OK(arrow::flight::Location::ForGrpcTcp("localhost", args.port, &location));
+
+    std::unique_ptr<arrow::flight::FlightClient> client;
+    ARROW_RETURN_NOT_OK(arrow::flight::FlightClient::Connect(location, &client));
+
+    std::cout << "Connected to " << location.ToString() << std::endl;
+
+    while (true) {
+        Runtime::TupleBuffer tb(0, schema);
+        queue.dequeue(tb);
+        auto arrow_arrays = format->getArrowArrays(tb);
+        auto recordBatch = arrow::RecordBatch::Make(arrow_schema, arrow_arrays[0]->length(), arrow_arrays);
+
+        auto descriptor = arrow::flight::FlightDescriptor::Path({"airquality.parquet"});
+
+        // Start the RPC call
+        std::unique_ptr<arrow::flight::FlightStreamWriter> writer;
+        std::unique_ptr<arrow::flight::FlightMetadataReader> metadata_reader;
+        ARROW_RETURN_NOT_OK(client->DoPut(descriptor, arrow_schema, &writer, &metadata_reader));
+
+        // Upload data
+        std::shared_ptr<arrow::RecordBatchReader> batch_reader;
+        ARROW_RETURN_NOT_OK(writer->WriteRecordBatch(*recordBatch));
+    }
 
     return arrow::Status::OK();
 }
 
 int main(int argc, char* argv[]) {
-    auto args = argparse::parse<FSSourceArgs>(argc, argv);
+    auto args = argparse::parse<SocketSourceArgs>(argc, argv);
 
-    arrow_main(args);
+    std::cerr << arrow_main(args).message() << std::endl;
 
     return 0;
 }
