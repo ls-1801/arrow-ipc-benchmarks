@@ -10,7 +10,7 @@
     WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
     See the License for the specific language governing permissions and
     limitations under the License.
- */
+*/
 
 #include <arrow/flight/api.h>
 #include <iostream>
@@ -20,19 +20,19 @@
 #include <folly/concurrency/DynamicBoundedQueue.h>
 
 struct SocketSourceArgs : public argparse::Args {
-    short& port = arg("Port number");
-    size_t& tuples_per_buffer = arg("number of tuples per buffer");
+    short &port = arg("Port number");
+    size_t &tuples_per_buffer = arg("number of tuples per buffer");
 };
 
-std::string create_file_name(const std::string& filename_template, size_t file_number) {
+std::string create_file_name(const std::string &filename_template, size_t file_number) {
     return fmt::format("{}.{}.arrow", filename_template, file_number);
 }
 
-arrow::Status write_tuples_to_file(const std::string& filename_template,
-                                   const std::function<std::optional<Runtime::TupleBuffer>()>& supplier,
+arrow::Status write_tuples_to_file(const std::string &filename_template,
+                                   const std::function<std::optional<Runtime::TupleBuffer>()> &supplier,
                                    size_t tuples_per_file,
-                                   const std::shared_ptr<arrow::Schema>& arrow_schema,
-                                   const ArrowFormat& arrow_format
+                                   const std::shared_ptr<arrow::Schema> &arrow_schema,
+                                   const ArrowFormat &arrow_format
 ) {
     size_t file_number = 0;
     std::shared_ptr<arrow::io::FileOutputStream> outfileArrow;
@@ -71,7 +71,7 @@ new_buffer:
 
 using Queue = folly::DynamicBoundedQueue<Runtime::TupleBuffer, true, true, true>;
 
-arrow::Status arrow_main(const SocketSourceArgs& args) {
+arrow::Status arrow_main(const SocketSourceArgs &args) {
     auto sch = Schema::create();
     auto schema = sch->append(SchemaField::create("id", INT_64));
 
@@ -80,7 +80,7 @@ arrow::Status arrow_main(const SocketSourceArgs& args) {
 
     auto queue = Queue(100);
 
-    auto producer = std::jthread([args, &schema, &queue](const std::stop_token& stoken) {
+    auto producer = std::jthread([args, &schema, &queue](const std::stop_token &stoken) {
         using namespace std::chrono_literals;
         int64_t i = 0;
         while (!stoken.stop_requested()) {
@@ -124,7 +124,7 @@ arrow::Status arrow_main(const SocketSourceArgs& args) {
     return arrow::Status::OK();
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     auto args = argparse::parse<SocketSourceArgs>(argc, argv);
 
     std::cerr << arrow_main(args).message() << std::endl;

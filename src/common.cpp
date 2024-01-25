@@ -1,6 +1,16 @@
-//
-// Created by ls on 09.01.24.
-//
+/*
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        https://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+*/
 
 #include "common.hpp"
 
@@ -29,8 +39,7 @@ Runtime::ConstTupleValueRef Runtime::ConstTupleRef::operator[](size_t index) con
 Runtime::TupleBuffer::TupleBuffer(size_t capacity, SchemaPtr schema): capacity(capacity),
                                                                       tuple_size(schema->get_tuple_size()),
                                                                       field_offsets(schema->field_offset),
-                                                                      schema(std::move(schema))
-{
+                                                                      schema(std::move(schema)) {
     data.resize(this->schema->get_tuple_size() * capacity);
 }
 
@@ -98,7 +107,7 @@ size_t SchemaField::get_size() const {
     return physical_type->get_size();
 }
 
-std::shared_ptr<Schema> Schema::append(SchemaFieldPtr&& field) {
+std::shared_ptr<Schema> Schema::append(SchemaFieldPtr &&field) {
     fields.push_back(field);
     if (field_offset.empty()) {
         field_offset.push_back(0);
@@ -120,7 +129,7 @@ size_t Schema::get_field_offset(size_t index) const {
 ArrowFormat::ArrowFormat(SchemaPtr schema): schema(std::move(schema)) {
 }
 
-std::string ArrowFormat::getFormattedBuffer(Runtime::TupleBuffer&) {
+std::string ArrowFormat::getFormattedBuffer(Runtime::TupleBuffer &) {
     // since arrow writes it owns file separately along with the schema we do not need it
     NES_NOT_IMPLEMENTED();
 }
@@ -128,8 +137,8 @@ std::string ArrowFormat::getFormattedBuffer(Runtime::TupleBuffer&) {
 std::string ArrowFormat::toString() { return "ARROW_IPC_FORMAT"; }
 
 
-std::vector<std::shared_ptr<arrow::Array>> ArrowFormat::getArrowArrays(Runtime::TupleBuffer& inputBuffer) const {
-    std::vector<std::shared_ptr<arrow::Array>> arrowArrays;
+std::vector<std::shared_ptr<arrow::Array> > ArrowFormat::getArrowArrays(Runtime::TupleBuffer &inputBuffer) const {
+    std::vector<std::shared_ptr<arrow::Array> > arrowArrays;
     uint64_t numberOfFields = schema->fields.size();
     auto numberOfTuples = inputBuffer.getNumberOfTuples();
     auto dynamicTupleBuffer = inputBuffer;
@@ -393,7 +402,7 @@ std::vector<std::shared_ptr<arrow::Array>> ArrowFormat::getArrowArrays(Runtime::
                     }
                 }
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             NES_ERROR("ArrowFormat::getArrowArrays: Failed to convert the arrowArray to desired NES data type. "
                       "Error: {}",
                       e.what());
@@ -404,7 +413,7 @@ std::vector<std::shared_ptr<arrow::Array>> ArrowFormat::getArrowArrays(Runtime::
 }
 
 std::shared_ptr<arrow::Schema> ArrowFormat::getArrowSchema() {
-    std::vector<std::shared_ptr<arrow::Field>> arrowFields;
+    std::vector<std::shared_ptr<arrow::Field> > arrowFields;
     std::shared_ptr<arrow::Schema> arrowSchema;
     uint64_t numberOfFields = schema->fields.size();
 
@@ -467,7 +476,7 @@ std::shared_ptr<arrow::Schema> ArrowFormat::getArrowSchema() {
                     }
                 }
             }
-        } catch (const std::exception& e) {
+        } catch (const std::exception &e) {
             NES_ERROR("Failed to convert the arrowArray to desired NES data type. Error: {}", e.what());
         }
     }
@@ -479,13 +488,13 @@ std::shared_ptr<arrow::Schema> ArrowFormat::getArrowSchema() {
 
 void ArrowFormat::writeArrowArrayToTupleBuffer(uint64_t tupleCountInBuffer,
                                                uint64_t schemaFieldIndex,
-                                               Runtime::TupleBuffer& tupleBuffer,
+                                               Runtime::TupleBuffer &tupleBuffer,
                                                const std::shared_ptr<arrow::Array> arrowArray) const {
     if (arrowArray == nullptr) {
         NES_THROW_RUNTIME_ERROR("ArrowSource::writeArrowArrayToTupleBuffer: arrowArray is null.");
     }
 
-    const auto& fields = schema->fields;
+    const auto &fields = schema->fields;
     auto dataType = fields[schemaFieldIndex];
     auto physicalType = dataType->getPhysicalType();
     uint64_t arrayLength = static_cast<uint64_t>(arrowArray->length());
@@ -690,7 +699,7 @@ void ArrowFormat::writeArrowArrayToTupleBuffer(uint64_t tupleCountInBuffer,
             // them.
             NES_NOT_IMPLEMENTED();
         }
-    } catch (const std::exception& e) {
+    } catch (const std::exception &e) {
         NES_ERROR("Failed to convert the arrowArray to desired NES data type. Error: {}", e.what());
     }
 }

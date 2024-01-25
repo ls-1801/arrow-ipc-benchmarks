@@ -3,7 +3,7 @@
     you may not use this file except in compliance with the License.
     You may obtain a copy of the License at
 
-     https://www.apache.org/licenses/LICENSE-2.0
+        https://www.apache.org/licenses/LICENSE-2.0
 
     Unless required by applicable law or agreed to in writing, software
     distributed under the License is distributed on an "AS IS" BASIS,
@@ -22,17 +22,17 @@
 #include <folly/concurrency/DynamicBoundedQueue.h>
 
 struct FSSourceArgs : public argparse::Args {
-    std::string& file_name = arg("file path");
-    size_t& buffer_per_file = arg("number of buffer per file");
-    size_t& tuples_per_buffer = arg("number of tuples per buffer");
+    std::string &file_name = arg("file path");
+    size_t &buffer_per_file = arg("number of buffer per file");
+    size_t &tuples_per_buffer = arg("number of tuples per buffer");
 };
 
-void writeRecordBatchToTupleBuffer(const ArrowFormat& format,
-                                   Runtime::TupleBuffer& buffer,
+void writeRecordBatchToTupleBuffer(const ArrowFormat &format,
+                                   Runtime::TupleBuffer &buffer,
                                    std::shared_ptr<arrow::RecordBatch> recordBatch) {
     size_t tupleCount = buffer.getNumberOfTuples();
     auto schema = buffer.getSchema();
-    const auto& fields = schema->fields;
+    const auto &fields = schema->fields;
     uint64_t numberOfSchemaFields = schema->fields.size();
     for (uint64_t columnItr = 0; columnItr < numberOfSchemaFields; columnItr++) {
         // retrieve the arrow column to write from the recordBatch
@@ -43,15 +43,15 @@ void writeRecordBatchToTupleBuffer(const ArrowFormat& format,
     }
 }
 
-std::string create_file_name(const std::string& filename_template, size_t file_number) {
+std::string create_file_name(const std::string &filename_template, size_t file_number) {
     return fmt::format("{}.{}.arrow", filename_template, file_number);
 }
 
-arrow::Status read_tuplebuffers_from_file(const std::string& filename_template,
-                                          const SchemaPtr& schema,
+arrow::Status read_tuplebuffers_from_file(const std::string &filename_template,
+                                          const SchemaPtr &schema,
                                           size_t tuples_per_file,
                                           size_t tuple_buffer_size,
-                                          std::function<void(std::shared_ptr<arrow::RecordBatch>&&)> emitter
+                                          std::function<void(std::shared_ptr<arrow::RecordBatch> &&)> emitter
 ) {
     using namespace std::chrono_literals;
     size_t file_number = 0;
@@ -118,7 +118,7 @@ new_buffer:
 
 using Queue = folly::DynamicBoundedQueue<std::shared_ptr<arrow::RecordBatch>, true, true, true>;
 
-arrow::Status arrow_main(const FSSourceArgs& args) {
+arrow::Status arrow_main(const FSSourceArgs &args) {
     auto sch = Schema::create();
     auto schema = sch->append(SchemaField::create("id", INT_64));
     auto arrow_format = ArrowFormat(schema);
@@ -130,7 +130,7 @@ arrow::Status arrow_main(const FSSourceArgs& args) {
     auto interval = std::chrono::seconds(5);
 
 
-    auto consumer = std::jthread([&](const std::stop_token& stoken) {
+    auto consumer = std::jthread([&](const std::stop_token &stoken) {
         using namespace std::chrono_literals;
         while (!stoken.stop_requested()) {
             if (std::shared_ptr<arrow::RecordBatch> batch; queue.try_dequeue_for(batch, 1s)) {
@@ -156,13 +156,13 @@ arrow::Status arrow_main(const FSSourceArgs& args) {
 
     read_tuplebuffers_from_file(args.file_name, schema, args.tuples_per_buffer * args.buffer_per_file,
                                 args.tuples_per_buffer,
-                                [&](std::shared_ptr<arrow::RecordBatch>&& record_batch) {
+                                [&](std::shared_ptr<arrow::RecordBatch> &&record_batch) {
                                     queue.enqueue(record_batch);
                                 });
     return arrow::Status::OK();
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     auto args = argparse::parse<FSSourceArgs>(argc, argv);
 
     arrow_main(args);

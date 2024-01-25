@@ -1,20 +1,20 @@
 /*
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
 
-    https://www.apache.org/licenses/LICENSE-2.0
+        https://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
- */
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+*/
+
+
 #include <cassert>
 
-#include "../inc/store.h"
-#include "../inc/client.h"
 #include <iostream>
 #include <thread>
 #include <cstring>
@@ -26,22 +26,22 @@ limitations under the License.
 #include <folly/concurrency/DynamicBoundedQueue.h>
 #include <arrow/ipc/reader.h>
 
-const char* name = "lightning";
+const char *name = "lightning";
 
 struct InMemorySource : public argparse::Args {
-    std::string& shared_memory_name = arg("shared memory name");
-    size_t& queue_size = arg("producer consumer queue size");
-    size_t& tuples_per_buffer = arg("number of tuples per buffer");
-    size_t& buffers_to_consume = arg("number of buffers that will be received before terminating");
+    std::string &shared_memory_name = arg("shared memory name");
+    size_t &queue_size = arg("producer consumer queue size");
+    size_t &tuples_per_buffer = arg("number of tuples per buffer");
+    size_t &buffers_to_consume = arg("number of buffers that will be received before terminating");
 };
 
 
-void writeRecordBatchToTupleBuffer(const ArrowFormat& format,
-                                   Runtime::TupleBuffer& buffer,
+void writeRecordBatchToTupleBuffer(const ArrowFormat &format,
+                                   Runtime::TupleBuffer &buffer,
                                    std::shared_ptr<arrow::RecordBatch> recordBatch) {
     size_t tupleCount = buffer.getNumberOfTuples();
     auto schema = buffer.getSchema();
-    const auto& fields = schema->fields;
+    const auto &fields = schema->fields;
     uint64_t numberOfSchemaFields = schema->fields.size();
     for (uint64_t columnItr = 0; columnItr < numberOfSchemaFields; columnItr++) {
         // retrieve the arrow column to write from the recordBatch
@@ -54,7 +54,7 @@ void writeRecordBatchToTupleBuffer(const ArrowFormat& format,
 
 using SPSCQueue = folly::DynamicBoundedQueue<DescriptorView, true, true, true>;
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     using namespace std::chrono_literals;
     auto args = argparse::parse<InMemorySource>(argc, argv);
     auto sch = Schema::create();
@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
     auto interval = std::chrono::seconds(5);
     SinkQueue memory_queue(args.shared_memory_name);
 
-    auto consumer = std::jthread([&](const std::stop_token& stoken) {
+    auto consumer = std::jthread([&](const std::stop_token &stoken) {
         using namespace std::chrono_literals;
         while (!stoken.stop_requested()) {
             if (DescriptorView buffer{}; queue.try_dequeue_for(buffer, 1s)) {

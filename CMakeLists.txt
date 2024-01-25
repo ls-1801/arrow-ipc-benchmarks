@@ -1,9 +1,9 @@
-cmake_minimum_required(VERSION 3.27)
+cmake_minimum_required(VERSION 3.24)
 project(arrow_benchmark)
 
 set(CMAKE_CXX_STANDARD 20)
-find_package(Arrow REQUIRED)
-find_package(ArrowFlight REQUIRED)
+find_package(Arrow 7.0.0 CONFIG REQUIRED)
+find_package(ArrowFlight 7.0.0 CONFIG REQUIRED)
 find_package(gRPC CONFIG REQUIRED)
 find_package(LibLZMA REQUIRED)
 find_package(LZ4 REQUIRED)

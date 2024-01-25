@@ -23,16 +23,16 @@
 #include <arrow/flight/server.h>
 
 struct FSSourceArgs : public argparse::Args {
-    short& port = arg("Port number");
-    size_t& tuples_per_buffer = arg("number of tuples per buffer");
+    short &port = arg("Port number");
+    size_t &tuples_per_buffer = arg("number of tuples per buffer");
 };
 
-void writeRecordBatchToTupleBuffer(const ArrowFormat& format,
-                                   Runtime::TupleBuffer& buffer,
+void writeRecordBatchToTupleBuffer(const ArrowFormat &format,
+                                   Runtime::TupleBuffer &buffer,
                                    std::shared_ptr<arrow::RecordBatch> recordBatch) {
     size_t tupleCount = buffer.getNumberOfTuples();
     auto schema = buffer.getSchema();
-    const auto& fields = schema->fields;
+    const auto &fields = schema->fields;
     uint64_t numberOfSchemaFields = schema->fields.size();
     for (uint64_t columnItr = 0; columnItr < numberOfSchemaFields; columnItr++) {
         // retrieve the arrow column to write from the recordBatch
@@ -43,21 +43,21 @@ void writeRecordBatchToTupleBuffer(const ArrowFormat& format,
     }
 }
 
-std::string create_file_name(const std::string& filename_template, size_t file_number) {
+std::string create_file_name(const std::string &filename_template, size_t file_number) {
     return fmt::format("{}.{}.arrow", filename_template, file_number);
 }
 
 using Queue = folly::DynamicBoundedQueue<std::shared_ptr<arrow::RecordBatch>, true, true, true>;
 
 class SinkService : public arrow::flight::FlightServerBase {
-    Queue& queue;
+    Queue &queue;
 
 public:
-    explicit SinkService(Queue& queue)
+    explicit SinkService(Queue &queue)
         : queue(queue) {
     }
 
-    arrow::Status DoPut(const arrow::flight::ServerCallContext& context,
+    arrow::Status DoPut(const arrow::flight::ServerCallContext &context,
                         std::unique_ptr<arrow::flight::FlightMessageReader> reader,
                         std::unique_ptr<arrow::flight::FlightMetadataWriter> writer) override {
         std::shared_ptr<arrow::RecordBatch> batch;
@@ -72,45 +72,46 @@ public:
 
     ~SinkService() override = default;
 
-    arrow::Status ListFlights(const arrow::flight::ServerCallContext& context, const arrow::flight::Criteria* criteria,
-                              std::unique_ptr<arrow::flight::FlightListing>* listings) override {
+    arrow::Status ListFlights(const arrow::flight::ServerCallContext &context, const arrow::flight::Criteria *criteria,
+                              std::unique_ptr<arrow::flight::FlightListing> *listings) override {
         NES_NOT_IMPLEMENTED();
     }
 
-    arrow::Status GetFlightInfo(const arrow::flight::ServerCallContext& context,
-                                const arrow::flight::FlightDescriptor& request,
-                                std::unique_ptr<arrow::flight::FlightInfo>* info) override {
-    }
-
-    arrow::Status GetSchema(const arrow::flight::ServerCallContext& context,
-                            const arrow::flight::FlightDescriptor& request,
-                            std::unique_ptr<arrow::flight::SchemaResult>* schema) override {
+    arrow::Status GetFlightInfo(const arrow::flight::ServerCallContext &context,
+                                const arrow::flight::FlightDescriptor &request,
+                                std::unique_ptr<arrow::flight::FlightInfo> *info) override {
         NES_NOT_IMPLEMENTED();
     }
 
-    arrow::Status DoGet(const arrow::flight::ServerCallContext& context, const arrow::flight::Ticket& request,
-                        std::unique_ptr<arrow::flight::FlightDataStream>* stream) override {
+    arrow::Status GetSchema(const arrow::flight::ServerCallContext &context,
+                            const arrow::flight::FlightDescriptor &request,
+                            std::unique_ptr<arrow::flight::SchemaResult> *schema) override {
         NES_NOT_IMPLEMENTED();
     }
 
-    arrow::Status DoExchange(const arrow::flight::ServerCallContext& context,
+    arrow::Status DoGet(const arrow::flight::ServerCallContext &context, const arrow::flight::Ticket &request,
+                        std::unique_ptr<arrow::flight::FlightDataStream> *stream) override {
+        NES_NOT_IMPLEMENTED();
+    }
+
+    arrow::Status DoExchange(const arrow::flight::ServerCallContext &context,
                              std::unique_ptr<arrow::flight::FlightMessageReader> reader,
                              std::unique_ptr<arrow::flight::FlightMessageWriter> writer) override {
         NES_NOT_IMPLEMENTED();
     }
 
-    arrow::Status DoAction(const arrow::flight::ServerCallContext& context, const arrow::flight::Action& action,
-                           std::unique_ptr<arrow::flight::ResultStream>* result) override {
+    arrow::Status DoAction(const arrow::flight::ServerCallContext &context, const arrow::flight::Action &action,
+                           std::unique_ptr<arrow::flight::ResultStream> *result) override {
         NES_NOT_IMPLEMENTED();
     }
 
-    arrow::Status ListActions(const arrow::flight::ServerCallContext& context,
-                              std::vector<arrow::flight::ActionType>* actions) override {
+    arrow::Status ListActions(const arrow::flight::ServerCallContext &context,
+                              std::vector<arrow::flight::ActionType> *actions) override {
         NES_NOT_IMPLEMENTED();
     }
 };
 
-arrow::Status arrow_main(const FSSourceArgs& args) {
+arrow::Status arrow_main(const FSSourceArgs &args) {
     auto sch = Schema::create();
     auto schema = sch->append(SchemaField::create("id", INT_64));
     auto arrow_format = ArrowFormat(schema);
@@ -122,7 +123,7 @@ arrow::Status arrow_main(const FSSourceArgs& args) {
     auto interval = std::chrono::seconds(5);
 
 
-    auto consumer = std::jthread([&](const std::stop_token& stoken) {
+    auto consumer = std::jthread([&](const std::stop_token &stoken) {
         using namespace std::chrono_literals;
         while (!stoken.stop_requested()) {
             if (std::shared_ptr<arrow::RecordBatch> batch; queue.try_dequeue_for(batch, 1s)) {
@@ -160,7 +161,7 @@ arrow::Status arrow_main(const FSSourceArgs& args) {
     return arrow::Status::OK();
 }
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
     auto args = argparse::parse<FSSourceArgs>(argc, argv);
 
     arrow_main(args);
