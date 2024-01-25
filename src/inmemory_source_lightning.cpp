@@ -1,41 +1,39 @@
 /*
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
 
-    https://www.apache.org/licenses/LICENSE-2.0
+        https://www.apache.org/licenses/LICENSE-2.0
 
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
- */
-#include "../inc/store.h"
-#include "../inc/client.h"
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+*/
+
+#include <lightning/client.h>
+#include <lightning/store.h>
 #include <iostream>
 #include <thread>
-#include <cstring>
 #include <chrono>
 #include <argparse/argparse.hpp>
-#include <arrow/ipc/feather.h>
 #include <arrow/ipc/writer.h>
 
 #include "common.hpp"
 #include <folly/concurrency/DynamicBoundedQueue.h>
-#include <bits/ranges_algo.h>
 
-const char* name = "lightning";
+const char *name = "lightning";
 
 struct InMemorySource : public argparse::Args {
-    std::string& socket_path = arg("file path");
-    size_t& queue_size = arg("number of buffer per file");
-    size_t& tuples_per_buffer = arg("number of tuples per buffer");
+    std::string &socket_path = arg("file path");
+    size_t &queue_size = arg("number of buffer per file");
+    size_t &tuples_per_buffer = arg("number of tuples per buffer");
 };
 
 using Queue = folly::DynamicBoundedQueue<Runtime::TupleBuffer, true, true, true>;
 
-int main(int argc, char** argv) {
+int main(int argc, char **argv) {
     using namespace std::chrono_literals;
     auto args = argparse::parse<InMemorySource>(argc, argv);
     auto sch = Schema::create();
@@ -53,7 +51,7 @@ int main(int argc, char** argv) {
 
     auto queue = Queue(100);
 
-    auto producer = std::jthread([args, &schema, &queue](const std::stop_token& stoken) {
+    auto producer = std::jthread([args, &schema, &queue](const std::stop_token &stoken) {
         using namespace std::chrono_literals;
         int64_t i = 0;
         while (!stoken.stop_requested()) {
@@ -70,7 +68,7 @@ int main(int argc, char** argv) {
 
     size_t max_number_of_buffers = args.queue_size;
     size_t current_object_id = 0;
-    uint8_t* ptr;
+    uint8_t *ptr;
 
     while (true) {
         auto interval_timeout = 100ms;

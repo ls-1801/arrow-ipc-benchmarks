@@ -27,10 +27,15 @@ target_link_libraries(GRPCSource common arrow_flight_static gRPC::grpc++)
 add_executable(GRPCSink src/socket_sink.cpp)
 target_link_libraries(GRPCSink common arrow_flight_static gRPC::grpc++)
 
-add_executable(MemorySourceLightning src/inmemory_source_lightning.cpp src/store.cc src/client.cc)
+# Chances are
+add_library(lightning STATIC IMPORTED GLOBAL lightning/src/client.cc lightning/src/store.cc)
+set_target_properties(lightning PROPERTIES IMPORTED_LOCATION ${Lightning_DIR}/lib/liblightning.a)
+target_include_directories(lightning INTERFACE ${Lightning_DIR}/inc)
+
+add_executable(MemorySourceLightning src/inmemory_source_lightning.cpp lightning/src/store.cc lightning/src/client.cc)
 target_link_libraries(MemorySourceLightning common lightning rt pthread)
 
-add_executable(MemorySinkLightning src/inmemory_sink_lightning.cpp src/client.cc)
+add_executable(MemorySinkLightning src/inmemory_sink_lightning.cpp lightning/src/client.cc)
 target_link_libraries(MemorySinkLightning common lightning rt pthread)
 
 add_executable(MemorySource src/inmemory_source.cpp)

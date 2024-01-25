@@ -16,9 +16,9 @@
 #include <unordered_set>
 #include <vector>
 
-#include "../inc/log_disk.h"
-#include "../inc/object_log.h"
-#include "../inc/store.h"
+#include <lightning/log_disk.h>
+#include <lightning/object_log.h>
+#include <lightning/store.h>
 
 
 int send_fd(int unix_sock, int fd) {
@@ -64,7 +64,7 @@ int send_fd(int unix_sock, int fd) {
     return size;
 }
 
-LightningStore::LightningStore(const std::string& unix_socket, long size)
+LightningStore::LightningStore(const std::string& unix_socket, int size)
     : unix_socket_(unix_socket), size_(size) {
     store_fd_ = shm_open("lightning", O_CREAT | O_RDWR, 0666);
     int status = ftruncate(store_fd_, size);

@@ -18,8 +18,7 @@
 #include <unistd.h>
 #include <vector>
 
-#include "../inc/client.h"
-
+#include <lightning/client.h>
 static int pkey_ = -1;
 static std::mutex pkey_lock_;
 
