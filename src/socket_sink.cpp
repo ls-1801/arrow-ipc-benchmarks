@@ -23,7 +23,9 @@
 #include <arrow/flight/server.h>
 
 struct FSSourceArgs : public argparse::Args {
+    std::string &schemaName = arg("Schema");
     short &port = arg("Port number");
+    size_t &buffer_per_request = arg("number of buffer per request");
     size_t &tuples_per_buffer = arg("number of tuples per buffer");
 };
 
@@ -120,23 +122,37 @@ arrow::Status arrow_main(const FSSourceArgs &args) {
     auto queue = Queue(100);
 
     auto last_timestamp = std::chrono::high_resolution_clock::now();
-    auto interval = std::chrono::seconds(5);
+    auto interval = std::chrono::seconds(2);
 
 
     auto consumer = std::jthread([&](const std::stop_token &stoken) {
         using namespace std::chrono_literals;
         while (!stoken.stop_requested()) {
             if (std::shared_ptr<arrow::RecordBatch> batch; queue.try_dequeue_for(batch, 1s)) {
-                Runtime::TupleBuffer tb(batch->num_rows(), schema);
-                writeRecordBatchToTupleBuffer(arrow_format, tb, batch);
-                tb.setNumberOfTuples(batch->num_rows());
-                for (auto tuple: tb) {
-                    if (current != tuple[0].read<int64_t>()) {
-                        NES_TRACE("Incorrect Tuple Value: Expected {} got {}\n", current,
-                                  tuple[0].read<int64_t>());
+                auto expected = generate_batch(schema_by_name(args.schemaName), args.tuples_per_buffer, current);
+
+                if (!expected->Equals(*batch)) {
+                    if (expected->num_columns() != batch->num_columns()) {
+                        NES_ERROR("Cols do not machts");
                     }
-                    current++;
+
+                    for (size_t index = 0; const auto &col: expected->columns()) {
+                        if (!col->Equals(batch->columns()[index])) {
+                            // NES_ERROR("Not the same: {}", index);
+                            // arrow::PrettyPrint(*col, 0, &std::cout);
+                            // arrow::PrettyPrint(*batch->columns()[index], 0, &std::cout);
+                        }
+                        index++;
+                        // exit(0);
+                    }
+                    // arrow::PrettyPrint(*expected, 0, &std::cout);
+                    // arrow::PrettyPrint(*batch, 0, &std::cout);
+                    // NES_ERROR("Not the same");
+                    // exit(0);
                 }
+
+                current += args.tuples_per_buffer;
+
                 auto now = std::chrono::high_resolution_clock::now();
                 if (last_timestamp + interval <= now) {
                     NES_WARNING("TPS: {:10L}\n", (current - last) / interval.count());

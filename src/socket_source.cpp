@@ -20,7 +20,9 @@
 #include <folly/concurrency/DynamicBoundedQueue.h>
 
 struct SocketSourceArgs : public argparse::Args {
+    std::string &schemaName = arg("Schema");
     short &port = arg("Port number");
+    size_t &buffer_per_request = arg("number of buffer per request");
     size_t &tuples_per_buffer = arg("number of tuples per buffer");
 };
 
@@ -69,7 +71,7 @@ new_buffer:
     goto new_buffer;
 }
 
-using Queue = folly::DynamicBoundedQueue<Runtime::TupleBuffer, true, true, true>;
+using Queue = folly::DynamicBoundedQueue<std::vector<std::shared_ptr<arrow::Array> >, true, true, true>;
 
 arrow::Status arrow_main(const SocketSourceArgs &args) {
     auto sch = Schema::create();
@@ -77,48 +79,51 @@ arrow::Status arrow_main(const SocketSourceArgs &args) {
 
     auto format = std::make_shared<ArrowFormat>(schema);
     auto arrow_schema = format->getArrowSchema();
+    size_t current = 0;
 
-    auto queue = Queue(100);
 
-    auto producer = std::jthread([args, &schema, &queue](const std::stop_token &stoken) {
-        using namespace std::chrono_literals;
-        int64_t i = 0;
-        while (!stoken.stop_requested()) {
-            auto tb = Runtime::TupleBuffer(args.tuples_per_buffer, schema);
-            tb.setNumberOfTuples(args.tuples_per_buffer);
-            for (auto tuple: tb) {
-                tuple[0].write<int64_t>(i++);
-            }
-            // loop as long as enqueue does not work and stop stop is not requested
-            while (!queue.try_enqueue_for(std::move(tb), 100ms) && !stoken.stop_requested()) {
-            }
-        }
-    });
+    // auto producer = std::jthread([args, &schema, &queue, &format](const std::stop_token &stoken) {
+    //     using namespace std::chrono_literals;
+    //     int64_t i = 0;
+    //     while (!stoken.stop_requested()) {
+    //         auto tb = Runtime::TupleBuffer(args.tuples_per_buffer, schema);
+    //         tb.setNumberOfTuples(args.tuples_per_buffer);
+    //         for (auto tuple: tb) {
+    //             tuple[0].write<int64_t>(i++);
+    //         }
+    //         auto arrow_arrays = format->getArrowArrays(tb);
+    //         // loop as long as enqueue does not work and stop stop is not requested
+    //         while (!queue.try_enqueue_for(std::move(arrow_arrays), 100ms) && !stoken.stop_requested()) {
+    //         }
+    //     }
+    // });
 
     arrow::flight::Location location;
     ARROW_RETURN_NOT_OK(arrow::flight::Location::ForGrpcTcp("localhost", args.port, &location));
 
     std::unique_ptr<arrow::flight::FlightClient> client;
+    arrow::flight::FlightClientOptions client_options;
     ARROW_RETURN_NOT_OK(arrow::flight::FlightClient::Connect(location, &client));
 
     std::cout << "Connected to " << location.ToString() << std::endl;
 
     while (true) {
-        Runtime::TupleBuffer tb(0, schema);
-        queue.dequeue(tb);
-        auto arrow_arrays = format->getArrowArrays(tb);
-        auto recordBatch = arrow::RecordBatch::Make(arrow_schema, arrow_arrays[0]->length(), arrow_arrays);
+        std::vector<std::shared_ptr<arrow::Array> > arrow_arrays;
 
         auto descriptor = arrow::flight::FlightDescriptor::Path({"airquality.parquet"});
 
         // Start the RPC call
         std::unique_ptr<arrow::flight::FlightStreamWriter> writer;
         std::unique_ptr<arrow::flight::FlightMetadataReader> metadata_reader;
-        ARROW_RETURN_NOT_OK(client->DoPut(descriptor, arrow_schema, &writer, &metadata_reader));
+        ARROW_RETURN_NOT_OK(client->DoPut(descriptor, schema_by_name(args.schemaName), &writer, &metadata_reader));
 
         // Upload data
-        std::shared_ptr<arrow::RecordBatchReader> batch_reader;
-        ARROW_RETURN_NOT_OK(writer->WriteRecordBatch(*recordBatch));
+        for (size_t buffer = 0; buffer < args.buffer_per_request; buffer++) {
+            auto recordBatch = generate_batch(schema_by_name(args.schemaName), args.tuples_per_buffer, current);
+            current += args.tuples_per_buffer;
+            ARROW_RETURN_NOT_OK(writer->WriteRecordBatch(*recordBatch));
+        }
+        writer->DoneWriting();
     }
 
     return arrow::Status::OK();
@@ -126,7 +131,7 @@ arrow::Status arrow_main(const SocketSourceArgs &args) {
 
 int main(int argc, char *argv[]) {
     auto args = argparse::parse<SocketSourceArgs>(argc, argv);
-
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     std::cerr << arrow_main(args).message() << std::endl;
 
     return 0;

@@ -16,16 +16,16 @@ find_package(Boost COMPONENTS system REQUIRED)
 add_library(common src/common.cpp)
 target_link_libraries(common PUBLIC arrow_static argparse::argparse lzma lz4 unofficial::brotli::brotlienc-static unofficial::brotli::brotlidec-static fmt::fmt Folly::folly)
 
-add_executable(FSSource src/fs_source.cpp)
-target_link_libraries(FSSource common)
+add_executable(fs_source src/fs_source.cpp)
+target_link_libraries(fs_source common)
 
-add_executable(FSSink src/fs_sink.cpp)
-target_link_libraries(FSSink common)
+add_executable(fs_sink src/fs_sink.cpp)
+target_link_libraries(fs_sink common)
 
-add_executable(GRPCSource src/socket_source.cpp)
-target_link_libraries(GRPCSource common arrow_flight_static gRPC::grpc++)
-add_executable(GRPCSink src/socket_sink.cpp)
-target_link_libraries(GRPCSink common arrow_flight_static gRPC::grpc++)
+add_executable(socket_source src/socket_source.cpp)
+target_link_libraries(socket_source common arrow_flight_static gRPC::grpc++)
+add_executable(socket_sink src/socket_sink.cpp)
+target_link_libraries(socket_sink common arrow_flight_static gRPC::grpc++)
 
 # Chances are
 add_library(lightning STATIC IMPORTED GLOBAL lightning/src/client.cc lightning/src/store.cc)
