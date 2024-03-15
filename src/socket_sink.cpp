@@ -23,7 +23,9 @@
 #include <arrow/flight/server.h>
 
 struct FSSourceArgs : public argparse::Args {
+    std::string &schemaName = arg("Schema");
     short &port = arg("Port number");
+    size_t &buffer_per_request = arg("number of buffer per request");
     size_t &tuples_per_buffer = arg("number of tuples per buffer");
 };
 
@@ -127,16 +129,15 @@ arrow::Status arrow_main(const FSSourceArgs &args) {
         using namespace std::chrono_literals;
         while (!stoken.stop_requested()) {
             if (std::shared_ptr<arrow::RecordBatch> batch; queue.try_dequeue_for(batch, 1s)) {
-                Runtime::TupleBuffer tb(batch->num_rows(), schema);
-                writeRecordBatchToTupleBuffer(arrow_format, tb, batch);
-                tb.setNumberOfTuples(batch->num_rows());
-                for (auto tuple: tb) {
-                    if (current != tuple[0].read<int64_t>()) {
-                        NES_TRACE("Incorrect Tuple Value: Expected {} got {}\n", current,
-                                  tuple[0].read<int64_t>());
-                    }
-                    current++;
+                auto expected = generate_batch(schema_by_name(args.schemaName), args.tuples_per_buffer, current);
+
+                if (!batch->Equals(*expected)) {
+                    NES_ERROR("Not the same");
+                    exit(0);
                 }
+
+                current += args.tuples_per_buffer;
+
                 auto now = std::chrono::high_resolution_clock::now();
                 if (last_timestamp + interval <= now) {
                     NES_WARNING("TPS: {:10L}\n", (current - last) / interval.count());
